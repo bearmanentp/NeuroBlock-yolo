@@ -1,0 +1,262 @@
+<!-- Made by | Discord Bearman.entp | -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>YOLO AI Block Studio Pro</title>
+    <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+    <script src="https://unpkg.com/blockly/javascript_compressed.js"></script>
+    <script src="https://unpkg.com/blockly/blocks_compressed.js"></script>
+    <script src="https://unpkg.com/blockly/msg/ko.js"></script>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; background: #1e1e1e; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+        #header { background: #2d2d2d; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0e639c; }
+        #main { display: flex; flex: 1; overflow: hidden; }
+        #blocklyDiv { flex: 1; }
+        #sidebar { width: 350px; background: #252526; border-left: 1px solid #333; display: flex; flex-direction: column; }
+        #status-area { padding: 20px; background: #333; font-size: 14px; border-bottom: 1px solid #444; }
+        #console { flex: 1; padding: 15px; overflow-y: auto; font-family: 'Consolas', monospace; color: #abb2bf; font-size: 12px; border-top: 1px solid #444; }
+        .run-btn { background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .stop-btn { background: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 10px; }
+        .log-item { border-bottom: 1px solid #333; padding: 5px 0; }
+        .accent { color: #61afef; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <div style="font-size: 20px;">🧠 <b>YOLO</b> AI Block Studio</div>
+    <div>
+        <!-- 새로 추가된 버튼들 -->
+        <button class="save-btn" onclick="saveBlocks()" style="background:#007acc; color:white; padding:10px; border:none; border-radius:4px; cursor:pointer;">프로젝트 저장</button>
+        <button class="load-btn" onclick="document.getElementById('fileInput').click()" style="background:#6c757d; color:white; padding:10px; border:none; border-radius:4px; cursor:pointer; margin-left:5px;">불러오기</button>
+        <input type="file" id="fileInput" style="display:none" onchange="loadBlocks(event)">
+        
+        <button class="run-btn" onclick="startProgram()" style="margin-left:20px;">시나리오 실행</button>
+        <button class="stop-btn" onclick="stopProgram()">정지</button>
+    </div>
+</div>
+
+<div id="main">
+    <div id="blocklyDiv"></div>
+    <div id="sidebar">
+        <div id="status-area">
+            <div>현재 모델: <span id="info-model" class="accent">연결 중...</span></div>
+            <div style="margin-top:5px;">감지 목록: <span id="info-det" class="accent">-</span></div>
+            <div style="margin-top:5px;">객체 수: <span id="info-count" class="accent">0</span></div>
+        </div>
+        <div id="console">
+            <div style="color: #5c6370; margin-bottom: 10px;">// TERMINAL LOG</div>
+            <div id="log-content"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 강화된 Toolbox -->
+<xml id="toolbox" style="display: none">
+    <category name="🚦 제어" colour="120">
+        <block type="forever_loop"></block>
+        <block type="wait_seconds"><value name="SECONDS"><shadow type="math_number"><field name="NUM">1</field></shadow></value></block>
+        <block type="controls_if"></block>
+        <block type="controls_repeat_ext"></block>
+    </category>
+    <category name="👁️ YOLO AI" colour="160">
+        <block type="yolo_model_set"></block>
+        <block type="yolo_check_specific"></block>
+        <block type="yolo_count_specific"></block>
+        <block type="yolo_has_any"></block>
+    </category>
+    <category name="⚖️ 논리 & 연산" colour="210">
+        <block type="logic_compare"></block>
+        <block type="logic_operation"></block>
+        <block type="logic_negate"></block>
+        <block type="math_number"></block>
+        <block type="math_arithmetic"></block>
+    </category>
+    <category name="📝 도구" colour="230">
+        <block type="print_log"></block>
+        <block type="text"></block>
+        <block type="text_join"></block>
+    </category>
+</xml>
+
+<script>
+    // 1. 추가된 커스텀 블록 정의
+    // YOLO 감지 가능 객체 목록 (COCO Dataset 기준)
+    const OBJ_LIST = [
+        // --- 인물 및 소지품 ---
+        ["사람", "person"],
+        ["가방/배낭", "backpack"],
+        ["핸드백", "handbag"],
+        ["우산", "umbrella"],
+        ["넥타이", "tie"],
+        ["캐리어", "suitcase"],
+
+        // --- IT 및 가전제품 ---
+        ["스마트폰", "cell phone"],
+        ["노트북", "laptop"],
+        ["마우스", "mouse"],
+        ["키보드", "keyboard"],
+        ["리모컨", "remote"],
+        ["TV/모니터", "tv"],
+        ["전자레인지", "microwave"],
+        ["오븐", "oven"],
+        ["냉장고", "refrigerator"],
+
+        // --- 가구 및 실내 사물 ---
+        ["의자", "chair"],
+        ["소파", "sofa"],
+        ["침대", "bed"],
+        ["식탁", "dining table"],
+        ["변기", "toilet"],
+        ["화분", "potted plant"],
+        ["시계", "clock"],
+        ["꽃병", "vase"],
+
+        // --- 주방 및 음식 ---
+        ["컵/잔", "cup"],
+        ["포크", "fork"],
+        ["나이프", "knife"],
+        ["숟가락", "spoon"],
+        ["그릇/접시", "bowl"],
+        ["와인잔", "wine glass"],
+        ["병", "bottle"],
+        ["바나나", "banana"],
+        ["사과", "apple"],
+        ["오렌지", "orange"],
+        ["피자", "pizza"],
+        ["케이크", "cake"],
+
+        // --- 교통 수단 ---
+        ["자동차", "car"],
+        ["자전거", "bicycle"],
+        ["오토바이", "motorcycle"],
+        ["버스", "bus"],
+        ["트럭", "truck"],
+        ["기차", "train"],
+        ["비행기", "airplane"],
+
+        // --- 동물 ---
+        ["강아지", "dog"],
+        ["고양이", "cat"],
+        ["새", "bird"],
+        ["말", "horse"],
+        ["양", "sheep"],
+        ["소", "cow"],
+        ["코끼리", "elephant"],
+        ["곰", "bear"],
+        ["얼룩말", "zebra"],
+        ["기린", "giraffe"]
+    ];
+    Blockly.Blocks['forever_loop'] = { init: function() { this.appendDummyInput().appendField("무한 반복 실행"); this.appendStatementInput("STACK"); this.setPreviousStatement(true); this.setNextStatement(true); this.setColour(120); }};
+    Blockly.Blocks['wait_seconds'] = { init: function() { this.appendValueInput("SECONDS").setCheck("Number").appendField("기다리기"); this.appendDummyInput().appendField("초"); this.setPreviousStatement(true); this.setNextStatement(true); this.setColour(120); }};
+    
+    Blockly.Blocks['yolo_model_set'] = { init: function() { this.appendDummyInput().appendField("AI 모델을").appendField(new Blockly.FieldDropdown([["v11 Nano", "v11"], ["v10 Nano", "v10"], ["v8 Nano", "v8"]]), "VER").appendField("으로 교체"); this.setPreviousStatement(true); this.setNextStatement(true); this.setColour(160); }};
+    
+    Blockly.Blocks['yolo_check_specific'] = { init: function() { this.appendDummyInput().appendField("화면에").appendField(new Blockly.FieldDropdown(OBJ_LIST), "OBJ").appendField("이(가) 있는가?"); this.setOutput(true, "Boolean"); this.setColour(160); }};
+    
+    Blockly.Blocks['yolo_count_specific'] = { init: function() { this.appendDummyInput().appendField("감지된").appendField(new Blockly.FieldDropdown(OBJ_LIST), "OBJ").appendField("의 개수"); this.setOutput(true, "Number"); this.setColour(160); }};
+    
+    Blockly.Blocks['yolo_has_any'] = { init: function() { this.appendDummyInput().appendField("아무 사물이라도 감지되었는가?"); this.setOutput(true, "Boolean"); this.setColour(160); }};
+    
+    Blockly.Blocks['print_log'] = { init: function() { this.appendValueInput("TEXT").appendField("로그 출력"); this.setPreviousStatement(true); this.setNextStatement(true); this.setColour(230); }};
+
+    // 2. 코드 생성기 업데이트
+    const gen = javascript.javascriptGenerator;
+    gen.forBlock['forever_loop'] = function(block, g) { return `while (isRunning) { ${g.statementToCode(block, 'STACK')} await sleep(50); }\n`; };
+    gen.forBlock['wait_seconds'] = function(block, g) { return `await sleep((${g.valueToCode(block, 'SECONDS', javascript.Order.ATOMIC)} || 1) * 1000);\n`; };
+    gen.forBlock['yolo_model_set'] = function(block) { return `await fetch('http://localhost:8000/control/model?version=${block.getFieldValue('VER')}');\nlog("모델 변경: ${block.getFieldValue('VER')}");\n`; };
+    gen.forBlock['yolo_check_specific'] = function(block) { return [`currentDetections.includes("${block.getFieldValue('OBJ')}")`, javascript.Order.ATOMIC]; };
+    gen.forBlock['yolo_count_specific'] = function(block) { return [`currentDetections.filter(x => x === "${block.getFieldValue('OBJ')}").length`, javascript.Order.ATOMIC]; };
+    gen.forBlock['yolo_has_any'] = function() { return [`currentDetections.length > 0`, javascript.Order.ATOMIC]; };
+    gen.forBlock['print_log'] = function(block, g) { return `log(${g.valueToCode(block, 'TEXT', javascript.Order.NONE) || "''"});\n`; };
+
+    // 3. 앱 실행 로직
+    const workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox'), theme: Blockly.Themes.Dark, grid: {spacing: 20, length: 3, colour: '#333', snap: true} });
+    let isRunning = false;
+    let currentDetections = [];
+
+    async function sync() {
+        try {
+            const r = await fetch('http://localhost:8000/status');
+            const d = await r.json();
+            currentDetections = d.detected;
+            document.getElementById('info-model').innerText = d.model.toUpperCase();
+            document.getElementById('info-det').innerText = d.detected.length > 0 ? [...new Set(d.detected)].join(', ') : "없음";
+            document.getElementById('info-count').innerText = d.detected.length;
+        } catch(e) {}
+    }
+    setInterval(sync, 400);
+
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+    function log(msg) {
+        const div = document.createElement('div');
+        div.className = 'log-item';
+        div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        const container = document.getElementById('log-content');
+        container.insertBefore(div, container.firstChild);
+    }
+
+    async function startProgram() {
+        if(isRunning) return;
+        isRunning = true;
+        log("▶️ 시나리오 실행 시작");
+        try {
+            const code = gen.workspaceToCode(workspace);
+            await eval(`(async () => { ${code} })()`);
+        } catch(e) { log("❌ 에러: " + e); stopProgram(); }
+    }
+
+    function stopProgram() { isRunning = false; log("🛑 프로그램 정지"); }
+    
+    // --- 파일 저장 기능 (최신 Serialization 방식) ---
+    function saveBlocks() {
+        try {
+            // 현재 워크스페이스의 모든 블록 상태를 JSON으로 추출
+            const state = Blockly.serialization.workspaces.save(workspace);
+            const data = JSON.stringify(state, null, 2); // 보기 좋게 정렬된 JSON
+            
+            const blob = new Blob([data], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `yolo_ai_project_${new Date().getTime()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link); // 클릭 후 링크 제거
+            URL.revokeObjectURL(url); // 메모리 해제
+            
+            log("💾 프로젝트 저장 완료! (다운로드 폴더를 확인하세요)");
+        } catch (e) {
+            log("❌ 저장 실패: " + e.message);
+            console.error(e);
+        }
+    }
+
+    // --- [수정] 파일 불러오기 기능 ---
+    function loadBlocks(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                // 기존 워크스페이스 비우기
+                workspace.clear();
+                // JSON 데이터를 워크스페이스에 복원
+                Blockly.serialization.workspaces.load(json, workspace);
+                log("📂 프로젝트 불러오기 성공!");
+                // 파일 입력창 초기화 (같은 파일을 다시 올릴 수 있도록)
+                event.target.value = '';
+            } catch (err) {
+                log("❌ 불러오기 실패: 파일 형식이 올바르지 않습니다.");
+                console.error(err);
+            }
+        };
+        reader.readAsText(file);
+    }
+</script>
+</body>
+</html>
